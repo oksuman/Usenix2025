@@ -5,273 +5,100 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"math/big"
 	"os"
 	"time"
 
 	"github.com/tuneinsight/lattigo/v4/bfv"
 )
 
-func main() {
-	// var N = flag.Int("N", 100, "The total number of clients")
-	// var T = flag.Int("T", 90, "The threshold")
-	var B = flag.Int("B", 16, "The bound of each nonce")
+type ParamPair struct {
+	N int
+	T int
+}
 
-	// paramsLiteral := bfv.ParametersLiteral{
-	// 	LogN:     11,
-	// 	Q:        []uint64{0x3001}, // 13.5 + 40.4 bits
-	// 	Pow2Base: 6,
-	// 	T:        0x3001,
-	// }
+func main() {
+	var B = flag.Int("B", 16, "The bound of each nonce")
+	flag.Parse()
 
 	params, err := bfv.NewParametersFromLiteral(bfv.PN12QP109)
 	if err != nil {
 		fmt.Println(err)
+		return
 	}
 
-	flag.Parse()
-	//Test our scheme
-	// myShamirApproxSS := ApproxSS.NewMyShamirApproxSS(100, 90, params)
-	// myShamirApproxSS.VanSS.ShareThenWrite(nil, "skShare", nil)
-	// isSucOurScheme, _, _, _, _ := myShamirApproxSS.ApproxRecover(*B)
-	// fmt.Println("Our scheme is ", isSucOurScheme)
+	paramPairs := []ParamPair{
+		{32, 5}, {32, 10}, {32, 16}, {32, 21},
+		{64, 5}, {64, 6}, {64, 21}, {64, 32}, {64, 42},
+		{128, 5}, {128, 7}, {128, 42}, {128, 64}, {128, 85},
+		{256, 5}, {256, 8}, {256, 85}, {256, 128}, {256, 170},
+		{512, 5}, {512, 9}, {512, 170}, {512, 256}, {512, 341},
+		{1024, 5}, {1024, 10}, {1024, 341}, {1024, 512}, {1024, 682},
+	}
 
-	//Test existing Shamir scheme with idea 1
-	// existingShamir1 := ApproxSS.NewExistingShamirApproxSS1(*N, *T, 1<<paramsLiteral.LogN)
-	// existingShamir1.ShareThenWrite(nil)
-	// _, isSucExistingShamir1 := existingShamir1.ApproxRecover(*B)
-	// fmt.Println("The first idea of Shamir ApproxSS is ", isSucExistingShamir1)
+	const trials = 1
+	filename := "TimeComp.txt"
 
-	//Test existing Shamir scheme with idea 2
-	// existingShamir2 := ApproxSS.NewExistingShamirApproxSS2(*N, *T, params)
-	// existingShamir2.VanSS.ShareThenWrite(nil, "skShare", nil)
-	// isSucExistingShamir2, _, _ := existingShamir2.ApproxRecover(*B)
-	// fmt.Println("The second idea of Shamir ApproxSS is ", isSucExistingShamir2)
+	for _, pair := range paramPairs {
+		n := pair.N
+		t := pair.T
 
-	// repSS := ApproxSS.NewReplicatedSS(*N, *T, params)
-	// repSS.ShareThenWrite(nil)
-	// isSuc, timeCompRepSS, sizeRepSS := repSS.ApproxRecover(*B)
-	// RecordTime("RepSS", timeCompRepSS, sizeRepSS, *N, *T)
-	// fmt.Println("The replicated ApproxSS is ", isSuc)
+		var sumR1Party, sumR1Agg, sumR2Party, sumR2Agg, sumTotal time.Duration
 
-	tRatio := []float64{0.5, 0.7, 0.9}
-	for n := 10; n < 110; n = n + 10 {
-		for _, tratio := range tRatio {
-			t := int(float64(n) * tratio)
+		for i := 0; i < trials; i++ {
+			myShamir := ApproxSS.NewMyShamirApproxSS(n, t, params)
+			myShamir.VanSS.ShareThenWrite(nil, "skShare", nil)
 
-			myShamirApproxSS := ApproxSS.NewMyShamirApproxSS(n, t, params)
-			myShamirApproxSS.VanSS.ShareThenWrite(nil, "skShare", nil)
-			//isSucOurScheme, timeCompOur, timeCompOurNotOnce, sizeOur, sizeOurNotOnce := myShamirApproxSS.ApproxRecover(*B)
-			isSucOurScheme, timeCompOur, timeCompOurNotOnce, sizeOur, sizeOurNotOnce := myShamirApproxSS.ApproxRecover4TestTime(*B)
-			fmt.Println("Our scheme is ", isSucOurScheme)
-			RecordTime("OurOnce", timeCompOur, sizeOur, n, t)
-			RecordTime("OurNotOnce", timeCompOurNotOnce, sizeOurNotOnce, n, t)
+			_, timeCompOnce, _, _, _ := myShamir.ApproxRecover4TestTime(*B)
 
-			existingShamir1 := ApproxSS.NewExistingShamirApproxSS1(n, t, 2048)
-			existingShamir1.ShareThenWrite(nil)
-			_, isSucExistingShamir1, timeCompShamir1, sizeShamir1 := existingShamir1.ApproxRecover4TestTime(*B)
-			fmt.Println("The first idea of Shamir ApproxSS is ", isSucExistingShamir1)
-			RecordTime("Shamir1", timeCompShamir1, sizeShamir1, n, t)
-
-			// existingShamir2 := ApproxSS.NewExistingShamirApproxSS2(n, t, params)
-			// existingShamir2.VanSS.ShareThenWrite(nil, "skShare", nil)
-			// isSucExistingShamir2, timeCompShamir2, sizeShamir2 := existingShamir2.ApproxRecover4TestTime(*B)
-			// fmt.Println("The second idea of Shamir ApproxSS is ", isSucExistingShamir2)
-			// RecordTime("Shamir2", timeCompShamir2, sizeShamir2, n, t)
-
-			repSS := ApproxSS.NewReplicatedSS(n, t, params)
-			repSS.ShareThenWrite4TestTime(nil)
-			isSuc, timeCompRepSS, sizeRepSS := repSS.ApproxRecover4TestTime(*B)
-			fmt.Println("The replicated ApproxSS is ", isSuc)
-			RecordTimeBig("Rep0", timeCompRepSS, sizeRepSS, n, t)
-
+			// Extract the per-stage times from ApproxRecover4TestTime console output if needed
+			sumR1Party += myShamir.LastR1Party
+			sumR1Agg += myShamir.LastR1Agg
+			sumR2Party += myShamir.LastR2Party
+			sumR2Agg += myShamir.LastR2Agg
+			sumTotal += timeCompOnce
 		}
 
-	}
+		avgR1Party := sumR1Party / trials
+		avgR1Agg := sumR1Agg / trials
+		avgR2Party := sumR2Party / trials
+		avgR2Agg := sumR2Agg / trials
+		avgTotal := sumTotal / trials
 
+		ringDim := params.N()
+		logQ := params.LogQP()
+
+		RecordAverageDetailed(filename, n, t, ringDim, logQ,
+			avgR1Party, avgR1Agg, avgR2Party, avgR2Agg, avgTotal)
+
+		fmt.Printf("N=%d, T=%d | AvgTotal: %.6fs\n", n, t, avgTotal.Seconds())
+	}
 }
 
-func RecordTime(name string, timeComp time.Duration, size float64, N, T int) {
+// RecordAverageDetailed writes averaged per-round times + BFV params
+func RecordAverageDetailed(filename string, N, T, ringDim, logQ int,
+	avgR1Party, avgR1Agg, avgR2Party, avgR2Agg, avgTotal time.Duration) {
 
-	rate := float64(98)
-	timeComm := size / float64(1048576*rate)
-
-	timeTotal := timeComm + timeComp.Seconds()
-
-	var file, file1, file2, file3 *os.File
-	var err error
-
-	filename := "TimeTotal"
-	if !ApproxSS.CheckFileIsExist(filename) {
-		file, err = os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0666)
-	} else {
-		file, err = os.OpenFile(filename, os.O_WRONLY|os.O_APPEND, 0666)
-	}
-
+	f, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
-		fmt.Println("文件打开失败", err)
+		fmt.Println("Error opening file:", err)
+		return
 	}
+	defer f.Close()
 
-	defer file.Close()
+	w := bufio.NewWriter(f)
+	now := time.Now().Format("2006-01-02 15:04:05")
 
-	write := bufio.NewWriter(file)
-	mes := fmt.Sprintf("%d%s%d%s%s%s%f\n", N, " ", T, " ", name, " ", timeTotal)
-	write.WriteString(mes)
-
-	//Flush将缓存的文件真正写入到文件中
-	write.Flush()
-
-	filename1 := "TimeComp"
-	if !ApproxSS.CheckFileIsExist(filename1) {
-		file1, err = os.OpenFile(filename1, os.O_WRONLY|os.O_CREATE, 0666)
-	} else {
-		file1, err = os.OpenFile(filename1, os.O_WRONLY|os.O_APPEND, 0666)
-	}
-
-	if err != nil {
-		fmt.Println("文件打开失败", err)
-	}
-
-	defer file1.Close()
-
-	write1 := bufio.NewWriter(file1)
-	mes1 := fmt.Sprintf("%d%s%d%s%s%s%f\n", N, " ", T, " ", name, " ", timeComp.Seconds())
-	write1.WriteString(mes1)
-
-	//Flush将缓存的文件真正写入到文件中
-	write1.Flush()
-
-	filename2 := "TimeComm"
-	if !ApproxSS.CheckFileIsExist(filename2) {
-		file2, err = os.OpenFile(filename2, os.O_WRONLY|os.O_CREATE, 0666)
-	} else {
-		file2, err = os.OpenFile(filename2, os.O_WRONLY|os.O_APPEND, 0666)
-	}
-
-	if err != nil {
-		fmt.Println("文件打开失败", err)
-	}
-
-	defer file2.Close()
-
-	write2 := bufio.NewWriter(file2)
-	mes2 := fmt.Sprintf("%d%s%d%s%s%s%f\n", N, " ", T, " ", name, " ", timeComm)
-	write2.WriteString(mes2)
-
-	//Flush将缓存的文件真正写入到文件中
-	write2.Flush()
-
-	filename3 := "SizeComm"
-	if !ApproxSS.CheckFileIsExist(filename3) {
-		file3, err = os.OpenFile(filename3, os.O_WRONLY|os.O_CREATE, 0666)
-	} else {
-		file3, err = os.OpenFile(filename3, os.O_WRONLY|os.O_APPEND, 0666)
-	}
-
-	if err != nil {
-		fmt.Println("文件打开失败", err)
-	}
-
-	defer file3.Close()
-
-	write3 := bufio.NewWriter(file3)
-	mes3 := fmt.Sprintf("%d%s%d%s%s%s%f\n", N, " ", T, " ", name, " ", size)
-	write3.WriteString(mes3)
-
-	//Flush将缓存的文件真正写入到文件中
-	write3.Flush()
-
-}
-
-func RecordTimeBig(name string, timeComp, size *big.Float, N, T int) {
-
-	rate := float64(98)
-	timeComm := big.NewFloat(0)
-	timeComm.Quo(size, new(big.Float).SetFloat64(float64(1048576*rate)))
-
-	timeTotal := new(big.Float).Add(timeComm, timeComp)
-
-	var file, file1, file2, file3 *os.File
-	var err error
-
-	filename := "TimeTotal"
-	if !ApproxSS.CheckFileIsExist(filename) {
-		file, err = os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0666)
-	} else {
-		file, err = os.OpenFile(filename, os.O_WRONLY|os.O_APPEND, 0666)
-	}
-
-	if err != nil {
-		fmt.Println("文件打开失败", err)
-	}
-
-	defer file.Close()
-
-	write := bufio.NewWriter(file)
-	mes := fmt.Sprintf("%d%s%d%s%s%s%s\n", N, " ", T, " ", name, " ", timeTotal.String())
-	write.WriteString(mes)
-
-	//Flush将缓存的文件真正写入到文件中
-	write.Flush()
-
-	filename1 := "TimeComp"
-	if !ApproxSS.CheckFileIsExist(filename1) {
-		file1, err = os.OpenFile(filename1, os.O_WRONLY|os.O_CREATE, 0666)
-	} else {
-		file1, err = os.OpenFile(filename1, os.O_WRONLY|os.O_APPEND, 0666)
-	}
-
-	if err != nil {
-		fmt.Println("文件打开失败", err)
-	}
-
-	defer file1.Close()
-
-	write1 := bufio.NewWriter(file1)
-	mes1 := fmt.Sprintf("%d%s%d%s%s%s%s\n", N, " ", T, " ", name, " ", timeComp.String())
-	write1.WriteString(mes1)
-
-	//Flush将缓存的文件真正写入到文件中
-	write1.Flush()
-
-	filename2 := "TimeComm"
-	if !ApproxSS.CheckFileIsExist(filename2) {
-		file2, err = os.OpenFile(filename2, os.O_WRONLY|os.O_CREATE, 0666)
-	} else {
-		file2, err = os.OpenFile(filename2, os.O_WRONLY|os.O_APPEND, 0666)
-	}
-
-	if err != nil {
-		fmt.Println("文件打开失败", err)
-	}
-
-	defer file2.Close()
-
-	write2 := bufio.NewWriter(file2)
-	mes2 := fmt.Sprintf("%d%s%d%s%s%s%s\n", N, " ", T, " ", name, " ", timeComm.String())
-	write2.WriteString(mes2)
-
-	//Flush将缓存的文件真正写入到文件中
-	write2.Flush()
-
-	filename3 := "SizeComm"
-	if !ApproxSS.CheckFileIsExist(filename3) {
-		file3, err = os.OpenFile(filename3, os.O_WRONLY|os.O_CREATE, 0666)
-	} else {
-		file3, err = os.OpenFile(filename3, os.O_WRONLY|os.O_APPEND, 0666)
-	}
-
-	if err != nil {
-		fmt.Println("文件打开失败", err)
-	}
-
-	defer file3.Close()
-
-	write3 := bufio.NewWriter(file3)
-	mes3 := fmt.Sprintf("%d%s%d%s%s%s%s\n", N, " ", T, " ", name, " ", size.String())
-	write3.WriteString(mes3)
-
-	//Flush将缓存的文件真正写入到文件中
-	write3.Flush()
-
+	w.WriteString(fmt.Sprintf("=============================================\n"))
+	w.WriteString(fmt.Sprintf("ATASSES Performance Report (%s)\n", now))
+	w.WriteString(fmt.Sprintf("Parameters: N = %d, T = %d\n", N, T))
+	w.WriteString(fmt.Sprintf("BFV Params: RingDim = %d, logQ = %d bits\n", ringDim, logQ))
+	w.WriteString("---------------------------------------------\n")
+	w.WriteString(fmt.Sprintf("Avg Round1-Party : %v\n", avgR1Party))
+	w.WriteString(fmt.Sprintf("Avg Round1-Agg   : %v\n", avgR1Agg))
+	w.WriteString(fmt.Sprintf("Avg Round2-Party : %v\n", avgR2Party))
+	w.WriteString(fmt.Sprintf("Avg Round2-Agg   : %v\n", avgR2Agg))
+	w.WriteString(fmt.Sprintf("Avg Total        : %v\n", avgTotal))
+	w.WriteString(fmt.Sprintf("Avg Total (sec)  : %.6f\n", avgTotal.Seconds()))
+	w.WriteString("=============================================\n\n")
+	w.Flush()
 }
